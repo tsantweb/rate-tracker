@@ -25,11 +25,23 @@ def on_startup():
     init_db()
     # Populate immediately on first boot so the dashboard isn't empty,
     # then let the scheduler take over for daily refreshes.
-    for series_id in SERIES:
-        if get_latest(series_id) is None:
-            refresh_all_series()
-            break
-    _scheduler = start_scheduler()
+    # Wrapped in try/except: a missing or bad FRED_API_KEY should not
+    # take the whole server down, it should just leave the dashboard
+    # showing "no data yet" until the key is fixed and refreshed.
+    try:
+        for series_id in SERIES:
+            if get_latest(series_id) is None:
+                refresh_all_series()
+                break
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("rate-tracker").error(
+            "Startup refresh failed, server will still start: %s", exc
+        )
+
+    try:
+        _scheduler = start_scheduler()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("rate-tracker").error("Scheduler failed to start: %s", exc)
 
 
 @app.get("/", response_class=HTMLResponse)

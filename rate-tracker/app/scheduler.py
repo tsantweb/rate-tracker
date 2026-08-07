@@ -9,7 +9,12 @@ logger = logging.getLogger("rate-tracker")
 
 
 def refresh_all_series():
-    client = FredClient()
+    try:
+        client = FredClient()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Cannot refresh, FredClient init failed: %s", exc)
+        return
+
     for series_id in SERIES:
         try:
             obs = client.get_series(series_id, limit=365)

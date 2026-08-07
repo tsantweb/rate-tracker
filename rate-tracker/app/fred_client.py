@@ -37,6 +37,34 @@ SERIES = {
         "label": "180-Day Average SOFR (compounded)",
         "short": "SOFR 180D Avg",
     },
+    "DFF": {
+        "label": "Federal Funds Effective Rate",
+        "short": "Fed Funds",
+    },
+    "DGS1": {
+        "label": "1-Year Treasury Constant Maturity",
+        "short": "1Y Treasury",
+    },
+    "DGS5": {
+        "label": "5-Year Treasury Constant Maturity",
+        "short": "5Y Treasury",
+    },
+    "DGS7": {
+        "label": "7-Year Treasury Constant Maturity",
+        "short": "7Y Treasury",
+    },
+    "DGS10": {
+        "label": "10-Year Treasury Constant Maturity",
+        "short": "10Y Treasury",
+    },
+    "DGS30": {
+        "label": "30-Year Treasury Constant Maturity",
+        "short": "30Y Treasury",
+    },
+    "MORTGAGE30US": {
+        "label": "Freddie Mac 30-Year Fixed Rate Mortgage Average (weekly)",
+        "short": "30Y Fixed Mtg",
+    },
 }
 
 
