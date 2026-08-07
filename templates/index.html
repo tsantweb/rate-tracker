@@ -82,13 +82,43 @@ async function renderChart(seriesId) {
         data: values,
         tension: 0.15,
         pointRadius: 0,
+        pointHitRadius: 12,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: "#FF3300",
+        pointHoverBorderColor: "#FFFFFF",
         borderWidth: 2,
+        borderColor: "#FF3300",
       }]
     },
     options: {
       responsive: true,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: { labels: { color: "#FFFFFF" } },
+        tooltip: {
+          enabled: true,
+          backgroundColor: "#000020",
+          borderColor: "#6974A2",
+          borderWidth: 1,
+          titleColor: "#FFFFFF",
+          bodyColor: "#FFFFFF",
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}%`
+          }
+        }
+      },
       scales: {
-        y: { ticks: { callback: v => v + "%" } }
+        x: {
+          ticks: { color: "#6974A2" },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        },
+        y: {
+          ticks: { color: "#6974A2", callback: v => v + "%" },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        }
       }
     }
   });
