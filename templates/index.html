@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Rate Index Tracker</title>
+<link rel="stylesheet" href="/static/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Rate Index Tracker</h1>
+  <p class="subtitle">Prime and SOFR data via FRED. Refreshed daily.</p>
+</header>
+
+<section id="cards" class="cards"></section>
+
+<section class="chart-section">
+  <div class="chart-controls">
+    <label for="series-select">Series</label>
+    <select id="series-select"></select>
+  </div>
+  <canvas id="rate-chart" height="90"></canvas>
+</section>
+
+<footer>
+  <p>Source: Federal Reserve Bank of St. Louis (FRED). SOFR averages are compounded, backward looking figures, not the forward looking CME Term SOFR referenced in most loan documents.</p>
+</footer>
+
+<script>
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+function fmtPct(v) {
+  return v === undefined || v === null ? "--" : v.toFixed(2) + "%";
+}
+
+let chart;
+
+async function renderCards() {
+  const rates = await fetchJSON("/api/rates");
+  const container = document.getElementById("cards");
+  container.innerHTML = "";
+  const select = document.getElementById("series-select");
+  select.innerHTML = "";
+
+  Object.entries(rates).forEach(([seriesId, data]) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="card-label">${data.short}</div>
+      <div class="card-value">${fmtPct(data.value)}</div>
+      <div class="card-date">${data.date || "no data yet"}</div>
+    `;
+    container.appendChild(card);
+
+    const opt = document.createElement("option");
+    opt.value = seriesId;
+    opt.textContent = data.label;
+    select.appendChild(opt);
+  });
+
+  if (select.options.length) {
+    select.value = select.options[0].value;
+    renderChart(select.value);
+  }
+}
+
+async function renderChart(seriesId) {
+  const data = await fetchJSON(`/api/history/${seriesId}?limit=180`);
+  const labels = data.observations.map(o => o.date);
+  const values = data.observations.map(o => o.value);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("rate-chart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: data.meta.label,
+        data: values,
+        tension: 0.15,
+        pointRadius: 0,
+        pointHitRadius: 12,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: "#FF3300",
+        pointHoverBorderColor: "#FFFFFF",
+        borderWidth: 2,
+        borderColor: "#FF3300",
+      }]
+    },
+    options: {
+      responsive: true,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: { labels: { color: "#FFFFFF" } },
+        tooltip: {
+          enabled: true,
+          backgroundColor: "#000020",
+          borderColor: "#6974A2",
+          borderWidth: 1,
+          titleColor: "#FFFFFF",
+          bodyColor: "#FFFFFF",
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: "#6974A2" },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        },
+        y: {
+          ticks: { color: "#6974A2", callback: v => v + "%" },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        }
+      }
+    }
+  });
+}
+
+document.getElementById("series-select").addEventListener("change", (e) => {
+  renderChart(e.target.value);
+});
+
+renderCards();
+</script>
+</body>
+</html>
