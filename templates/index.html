@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Rate Index Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Rate Index Tracker</h1>
+</header>
+
+<section id="cards" class="cards"></section>
+
+<section class="intraday-section">
+  <div class="intraday-header">
+    <span class="intraday-badge">INTRADAY, NOT OFFICIAL</span>
+    <button id="intraday-refresh" class="refresh-btn">Refresh</button>
+  </div>
+  <section id="intraday-cards" class="cards"></section>
+</section>
+
+<section class="chart-section">
+  <div class="chart-controls">
+    <label for="series-select">Series</label>
+    <select id="series-select"></select>
+    <label for="lookback-select">Lookback</label>
+    <select id="lookback-select">
+      <option value="30">1 Month</option>
+      <option value="90">3 Months</option>
+      <option value="180" selected>6 Months</option>
+      <option value="365">1 Year</option>
+      <option value="1095">3 Years</option>
+      <option value="1825">5 Years</option>
+      <option value="">Max</option>
+    </select>
+  </div>
+  <canvas id="rate-chart" height="90"></canvas>
+</section>
+
+<footer>
+  <p>Source: Federal Reserve Bank of St. Louis (FRED). SOFR averages are compounded, backward looking figures, not the forward looking CME Term SOFR referenced in most loan documents.</p>
+</footer>
+
+<script>
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+function fmtPct(v) {
+  return v === undefined || v === null ? "--" : v.toFixed(2) + "%";
+}
+
+function isoWeekKey(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function monthKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Chart.js autoSkip picks whatever spacing fits the canvas width,
+// which produces arbitrary, inconsistent-looking date ticks. Instead
+// we downsample to one point per calendar week (short lookbacks) or
+// per calendar month (long lookbacks) before charting, so the x-axis
+// always steps in fixed, predictable increments.
+function downsampleByPeriod(observations, periodType) {
+  const buckets = new Map();
+  observations.forEach(obs => {
+    const d = new Date(obs.date + "T00:00:00");
+    const key = periodType === "week" ? isoWeekKey(d) : monthKey(d);
+    buckets.set(key, obs); // last observation in the bucket wins, input is date-ascending
+  });
+  return Array.from(buckets.values());
+}
+
+let chart;
+
+async function renderCards() {
+  const rates = await fetchJSON("/api/rates");
+  const container = document.getElementById("cards");
+  container.innerHTML = "";
+  const select = document.getElementById("series-select");
+  select.innerHTML = "";
+
+  Object.entries(rates).forEach(([seriesId, data]) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.seriesId = seriesId;
+    card.innerHTML = `
+      <div class="card-label">${data.short}</div>
+      <div class="card-value">${fmtPct(data.value)}</div>
+      <div class="card-date">${data.date || "no data yet"}</div>
+    `;
+    card.addEventListener("click", () => selectSeries(seriesId));
+    container.appendChild(card);
+
+    const opt = document.createElement("option");
+    opt.value = seriesId;
+    opt.textContent = data.label;
+    select.appendChild(opt);
+  });
+
+  if (select.options.length) {
+    selectSeries(select.options[0].value);
+  }
+}
+
+function selectSeries(seriesId) {
+  const select = document.getElementById("series-select");
+  select.value = seriesId;
+
+  document.querySelectorAll(".card").forEach(card => {
+    card.classList.toggle("card-active", card.dataset.seriesId === seriesId);
+  });
+
+  renderChart(seriesId);
+}
+
+async function renderChart(seriesId) {
+  const lookback = document.getElementById("lookback-select").value;
+  const url = lookback
+    ? `/api/history/${seriesId}?days=${lookback}`
+    : `/api/history/${seriesId}`;
+  const data = await fetchJSON(url);
+
+  // 180 days (6 Months) or less: weekly points. Longer, including
+  // Max: monthly points. Keeps tick spacing consistent within a
+  // given range rather than jumping around with the raw row count.
+  const periodType = (lookback === "" || Number(lookback) > 180) ? "month" : "week";
+  const observations = downsampleByPeriod(data.observations, periodType);
+
+  const labels = observations.map(o => o.date);
+  const values = observations.map(o => o.value);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("rate-chart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: data.meta.label,
+        data: values,
+        tension: 0.15,
+        pointRadius: 0,
+        pointHitRadius: 12,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: "#FF3300",
+        pointHoverBorderColor: "#FFFFFF",
+        borderWidth: 2,
+        borderColor: "#FF3300",
+      }]
+    },
+    options: {
+      responsive: true,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: { labels: { color: "#FFFFFF", font: { family: "'Century Gothic', 'Poppins', sans-serif" } } },
+        tooltip: {
+          enabled: true,
+          backgroundColor: "#000020",
+          borderColor: "#6974A2",
+          borderWidth: 1,
+          titleColor: "#FFFFFF",
+          bodyColor: "#FFFFFF",
+          titleFont: { family: "'Century Gothic', 'Poppins', sans-serif" },
+          bodyFont: { family: "'Century Gothic', 'Poppins', sans-serif" },
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: "#FFFFFF", font: { family: "'Century Gothic', 'Poppins', sans-serif" } },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        },
+        y: {
+          ticks: {
+            color: "#FFFFFF",
+            font: { family: "'Century Gothic', 'Poppins', sans-serif" },
+            callback: v => Number(v).toFixed(2) + "%"
+          },
+          grid: { color: "rgba(105, 116, 162, 0.15)" }
+        }
+      }
+    }
+  });
+}
+
+document.getElementById("series-select").addEventListener("change", (e) => {
+  selectSeries(e.target.value);
+});
+
+document.getElementById("lookback-select").addEventListener("change", () => {
+  const select = document.getElementById("series-select");
+  renderChart(select.value);
+});
+
+async function renderIntraday() {
+  const container = document.getElementById("intraday-cards");
+  container.innerHTML = `<div class="intraday-loading">Loading...</div>`;
+
+  try {
+    const quotes = await fetchJSON("/api/intraday");
+    container.innerHTML = "";
+
+    if (Object.keys(quotes).length === 0) {
+      container.innerHTML = `<div class="intraday-loading">No intraday data right now, Yahoo may be unavailable. Try refresh.</div>`;
+      return;
+    }
+
+    Object.values(quotes).forEach(data => {
+      const card = document.createElement("div");
+      card.className = "card card-intraday";
+      card.innerHTML = `
+        <div class="card-label">${data.short}</div>
+        <div class="card-value">${fmtPct(data.value)}</div>
+        <div class="card-date">live</div>
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="intraday-loading">Couldn't reach the intraday source. Try refresh.</div>`;
+  }
+}
+
+document.getElementById("intraday-refresh").addEventListener("click", renderIntraday);
+
+renderCards();
+renderIntraday();
+</script>
+</body>
+</html>
