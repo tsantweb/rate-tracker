@@ -15,7 +15,7 @@ from app.yahoo_client import get_intraday_quotes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rate-tracker")
 
-app = FastAPI(title="Rate Index Tracker")
+app = FastAPI(title="RATE INDEX TRACKER")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
